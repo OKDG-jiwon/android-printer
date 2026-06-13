@@ -1,24 +1,32 @@
 package kr.deliveryprint.printer
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 /**
- * 이지체크 TS-194N 등 KICC(한국정보통신) 단말기의 **내장 프린터** 출력 자리.
+ * 이지체크 TS-194N 등 KICC(한국정보통신) 단말기의 **내장 프린터** 출력.
  *
- * 내장 프린터는 제조사 전용 SDK/Intent API 로만 접근할 수 있고 공개 문서가 없다.
- * KICC/공급처에서 SDK를 확보하면:
- *   1) SDK(aar/jar)를 app/libs 에 추가하고 build.gradle 의존성에 등록,
- *   2) 아래 [print] 에서 SDK의 프린터 객체로 [bytes] 또는 텍스트를 출력하도록 구현.
+ * 단말의 KICC 데몬과 유닉스 도메인 소켓으로 통신해 [comPort] 에 연결된 프린터로 출력한다.
+ * (프로토콜 구현은 [KiccUdsClient] 참고 — 제조사 "POS 장치설정" 앱을 분석해 재현했다.)
  *
- * 그 전까지는 명확한 실패를 반환해 블루투스 프린터로 폴백하도록 한다.
+ * @param comPort 출력 대상 포트. 내부(내장) 프린터는 "INTERNAL".
+ *                "COM1"/"COM2" 등은 시리얼 포트(서명패드 등 주변기기).
  */
-class KiccInnerPrinter : Printer {
+class KiccInnerPrinter(private val comPort: String = "INTERNAL") : Printer {
 
-    override val displayName: String = "내장 프린터 (KICC SDK 미연동)"
+    private val client = KiccUdsClient()
 
-    override suspend fun print(bytes: ByteArray): Result<Unit> =
-        Result.failure(
-            UnsupportedOperationException(
-                "내장 프린터는 KICC SDK 연동이 필요합니다. " +
-                    "SDK 확보 전까지는 설정에서 '블루투스 프린터'를 사용하세요.",
-            ),
-        )
+    override val displayName: String = "내장 프린터 (KICC · $comPort)"
+
+    override suspend fun print(bytes: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!client.open()) {
+                error(
+                    "내장 프린터 데몬에 연결하지 못했습니다. " +
+                        "이 단말이 KICC POS(이지체크)인지, 프린터 포트($comPort) 설정이 맞는지 확인하세요.",
+                )
+            }
+            client.sendRs232(comPort, bytes)
+        }
+    }
 }

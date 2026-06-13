@@ -13,7 +13,7 @@ class PrinterFactory(private val context: Context) {
             if (mac.isNullOrBlank()) NoPrinter("블루투스 프린터가 선택되지 않았습니다")
             else BluetoothEscPosPrinter(context, mac)
         }
-        PrinterType.KICC_INNER -> KiccInnerPrinter()
+        PrinterType.KICC_INNER -> KiccInnerPrinter(settings.kiccComPort)
     }
 }
 

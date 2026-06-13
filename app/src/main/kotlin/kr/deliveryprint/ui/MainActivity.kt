@@ -211,7 +211,7 @@ private fun PrinterSettingsScreen(onBack: () -> Unit) {
                 Text(
                     text = when (type) {
                         PrinterType.BLUETOOTH -> "  블루투스 ESC/POS 프린터 (권장)"
-                        PrinterType.KICC_INNER -> "  내장 프린터 (KICC SDK 필요)"
+                        PrinterType.KICC_INNER -> "  내장 프린터 (KICC · 이지체크)"
                     },
                 )
             }
@@ -238,6 +238,21 @@ private fun PrinterSettingsScreen(onBack: () -> Unit) {
                 ) {
                     RadioButton(selected = current.bluetoothMac == mac, onClick = null)
                     Text("  $name  ($mac)")
+                }
+            }
+        }
+
+        if (current.printerType == PrinterType.KICC_INNER) {
+            Text("내장 프린터 포트", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "내부(내장) 프린터는 INTERNAL. COM 포트는 서명패드 등 주변기기용입니다.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("INTERNAL", "COM1", "COM2", "0").forEach { port ->
+                    OutlinedButton(onClick = { scope.launch { ServiceLocator.settings.setKiccComPort(port) } }) {
+                        Text(if (current.kiccComPort == port) "● $port" else port)
+                    }
                 }
             }
         }

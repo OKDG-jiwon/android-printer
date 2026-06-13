@@ -12,6 +12,8 @@ data class ReceiptConfig(
     val widthChars: Int = 32,
     val charsetName: String = "EUC-KR",
     val cutPaper: Boolean = true,
+    /** 절단 명령 방식(프린터 기종별). 내부 KICC 프린터는 [CutMode.ESC_M]. */
+    val cutMode: CutMode = CutMode.GS_V,
     val openCashDrawer: Boolean = false,
     val zoneId: String = "Asia/Seoul",
 )
@@ -74,7 +76,7 @@ class ReceiptFormatter(private val config: ReceiptConfig = ReceiptConfig()) {
 
         e.feed(3)
         if (config.openCashDrawer) e.openCashDrawer()
-        if (config.cutPaper) e.cut(partial = true)
+        if (config.cutPaper) e.cut(config.cutMode)
         return e.bytes()
     }
 

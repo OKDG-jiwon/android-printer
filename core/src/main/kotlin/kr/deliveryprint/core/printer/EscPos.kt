@@ -5,6 +5,15 @@ import java.nio.charset.Charset
 
 enum class Align(val code: Byte) { LEFT(0), CENTER(1), RIGHT(2) }
 
+/** 용지 절단 명령 방식. 프린터 기종마다 지원 명령이 다르다. */
+enum class CutMode {
+    /** GS V : 표준 ESC/POS(대부분의 블루투스 영수증 프린터). */
+    GS_V,
+
+    /** ESC m : KICC 내부(내장) 프린터 등 일부 국산 프린터. */
+    ESC_M,
+}
+
 /**
  * ESC/POS 명령 바이트열을 쌓는 빌더. 대부분의 영수증(58mm/80mm) 열전사 프린터가 지원하는
  * 표준 명령만 사용한다. 한글은 기본 EUC-KR 로 인코딩한다(국산 프린터 대부분이 EUC-KR 모드).
@@ -44,6 +53,14 @@ class EscPos(charsetName: String = "EUC-KR") {
     /** GS V m : 용지 절단(0=완전 절단, 1=부분 절단). */
     fun cut(partial: Boolean = true) = apply {
         out.write(byteArrayOf(0x1D, 0x56, (if (partial) 1 else 0).toByte()))
+    }
+
+    /** [mode] 에 맞는 절단 명령을 쓴다. GS_V=부분 절단, ESC_M=ESC m. */
+    fun cut(mode: CutMode) = apply {
+        when (mode) {
+            CutMode.GS_V -> out.write(byteArrayOf(0x1D, 0x56, 1))
+            CutMode.ESC_M -> out.write(byteArrayOf(0x1B, 0x6D))
+        }
     }
 
     /** ESC p : 캐시 드로어(금전함) 개방 펄스. */
