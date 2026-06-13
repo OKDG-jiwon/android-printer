@@ -94,7 +94,7 @@ class ReceiptFormatter(private val config: ReceiptConfig = ReceiptConfig()) {
         return left + " ".repeat(gap) + right
     }
 
-    private fun displayWidth(s: String): Int = s.sumOf { if (isWide(it)) 2 else 1 }
+    private fun displayWidth(s: String): Int = s.fold(0) { acc, c -> acc + if (isWide(c)) 2 else 1 }
 
     private fun isWide(c: Char): Boolean {
         val code = c.code
