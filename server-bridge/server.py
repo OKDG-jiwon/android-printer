@@ -111,11 +111,27 @@ def map_order(o):
 
 
 def fetch_orders(status):
-    url = ("https://pos-api.coupang.com/api/v2/stores/orders"
-           "?version=v3&storeIds=%s&sort=OLD&status=%s" % (COUPANG_STORE_ID, status))
-    data = coupang_get(url)
-    content = (data.get("content") or {}).get("content") or []
-    return [map_order(o) for o in content]
+    """status 는 콤마로 여러 개 지정 가능. 예: "PENDING,PROCESSING".
+
+    쿠팡은 조회 버킷이 주문의 실제 status 필드와 다르다:
+      - PENDING    = 신규(미수락)
+      - PROCESSING = 수락·조리·배달 등 진행중(실제 status 는 ACCEPTED 등)
+      - COMPLETED  = 완료
+    "진행중"을 보려면 PENDING + PROCESSING 을 합쳐야 한다.
+    """
+    statuses = [s.strip() for s in status.split(",") if s.strip()] or ["PENDING"]
+    merged = {}  # orderId → order (중복 제거)
+    for st in statuses:
+        url = ("https://pos-api.coupang.com/api/v2/stores/orders"
+               "?version=v3&storeIds=%s&sort=OLD&status=%s" % (COUPANG_STORE_ID, st))
+        data = coupang_get(url)
+        content = (data.get("content") or {}).get("content") or []
+        for o in content:
+            mo = map_order(o)
+            merged[mo["orderId"]] = mo
+    orders = list(merged.values())
+    orders.sort(key=lambda o: o.get("orderedAt") or 0)
+    return orders
 
 
 def parse_multipart(body, ctype):

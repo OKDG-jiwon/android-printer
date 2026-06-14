@@ -345,7 +345,8 @@ private fun NotificationLogScreen(onBack: () -> Unit) {
 private fun CloudOrdersScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberComposableScope()
-    var status by remember { mutableStateOf("PENDING") }
+    // 쿠팡은 "진행중"이 PENDING(신규)+PROCESSING(수락·진행)으로 나뉘므로 둘 다 조회한다.
+    var status by remember { mutableStateOf("PENDING,PROCESSING") }
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -367,7 +368,7 @@ private fun CloudOrdersScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("PENDING" to "신규/진행", "COMPLETED" to "완료").forEach { (s, label) ->
+            listOf("PENDING,PROCESSING" to "신규/진행", "COMPLETED" to "완료").forEach { (s, label) ->
                 OutlinedButton(onClick = { status = s }) {
                     Text(if (status == s) "● $label" else label)
                 }
