@@ -53,12 +53,16 @@ object CloudOrderClient {
     }
 
     /**
-     * 서버에 쌓인 배민 변환 영수증(이미 42칸 재배치된 텍스트)을 가져온다.
-     * PC 클라이언트가 올린 PDF 를 서버가 변환해 큐에 보관한 것.
+     * 서버에 쌓인 배민 변환 영수증 중 **미출력분**(자동 폴링용). PDF 를 서버가 변환해 큐에 보관한 것.
      */
-    suspend fun fetchBaemin(): Result<List<Order>> = withContext(Dispatchers.IO) {
+    suspend fun fetchBaemin(): Result<List<Order>> = getBaemin("/baemin")
+
+    /** 최근 배민 주문 **전체**(출력된 것 포함, 최신순) — "이전 주문 조회·재출력"용. */
+    suspend fun fetchBaeminHistory(): Result<List<Order>> = getBaemin("/baemin/history")
+
+    private suspend fun getBaemin(path: String): Result<List<Order>> = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL("$baeminBase/baemin").openConnection() as HttpURLConnection).apply {
+            val conn = (URL("$baeminBase$path").openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 10_000
                 readTimeout = 15_000

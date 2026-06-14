@@ -423,7 +423,7 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
         loading = true
         error = null
         scope.launch {
-            CloudOrderClient.fetchBaemin()
+            CloudOrderClient.fetchBaeminHistory()
                 .onSuccess { orders = it }
                 .onFailure { error = it.message ?: "불러오기 실패" }
             loading = false
@@ -436,7 +436,7 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            "자동 출력이 켜져 있으면 새 배민 주문은 자동으로 출력됩니다. 여기서는 대기 중인 전표를 수동으로 출력할 수 있습니다.",
+            "최근 배민 주문(최신순)입니다. 새 주문은 자동 출력되며, 여기서 지난 주문을 다시 출력할 수 있습니다.",
             style = MaterialTheme.typography.bodySmall,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -446,7 +446,7 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
         error?.let {
             Text("오류: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
-        if (!loading && error == null && orders.isEmpty()) Text("대기 중인 배민 주문이 없습니다.")
+        if (!loading && error == null && orders.isEmpty()) Text("배민 주문 내역이 없습니다.")
 
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(orders) { order ->
@@ -461,15 +461,9 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
                             onClick = {
                                 PrintForegroundService.start(context)
                                 ServiceLocator.printController.submit(order)
-                                order.orderNumber?.let { id ->
-                                    scope.launch {
-                                        CloudOrderClient.ackBaemin(id)
-                                        orders = orders.filterNot { it.orderNumber == id }
-                                    }
-                                }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("출력") }
+                        ) { Text("다시 출력") }
                     }
                 }
             }

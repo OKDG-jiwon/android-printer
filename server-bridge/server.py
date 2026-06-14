@@ -178,9 +178,11 @@ def baemin_enqueue(pdf_bytes):
     with open(path, "wb") as f:
         f.write(pdf_bytes)
     text = reflow_pdf(path)
-    item = {"id": oid, "text": text, "at": int(time.time() * 1000)}
+    item = {"id": oid, "text": text, "at": int(time.time() * 1000), "printed": False}
     with _baemin_lock:
         _baemin.append(item)
+        if len(_baemin) > 100:           # 이력 메모리 상한
+            del _baemin[:len(_baemin) - 100]
     sys.stderr.write("BAEMIN enqueue %s (%d chars)\n" % (oid, len(text)))
     return oid
 
@@ -243,9 +245,16 @@ class H(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(200, "application/json; charset=utf-8",
                            json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False).encode("utf-8"))
-        elif self.path.startswith("/baemin"):
+        elif self.path.startswith("/baemin/history"):
+            # 최근 주문 전체(출력 여부 포함, 최신순) — 앱의 "이전 주문 조회"용.
             with _baemin_lock:
-                receipts = list(_baemin)
+                receipts = list(reversed(_baemin))
+            body = json.dumps({"ok": True, "receipts": receipts}, ensure_ascii=False).encode("utf-8")
+            self._send(200, "application/json; charset=utf-8", body)
+        elif self.path.startswith("/baemin"):
+            # 미출력분만 — 앱 자동 폴링이 새 주문만 가져가 출력(중복방지)하도록.
+            with _baemin_lock:
+                receipts = [r for r in _baemin if not r.get("printed")]
             body = json.dumps({"ok": True, "receipts": receipts}, ensure_ascii=False).encode("utf-8")
             self._send(200, "application/json; charset=utf-8", body)
         elif self.path.startswith("/up"):
@@ -274,7 +283,9 @@ class H(http.server.BaseHTTPRequestHandler):
             except Exception:
                 oid = None
             with _baemin_lock:
-                _baemin[:] = [r for r in _baemin if r["id"] != oid]
+                for r in _baemin:
+                    if r["id"] == oid:
+                        r["printed"] = True   # 삭제 대신 출력완료 표시(이력 보존)
             self._send(200, "application/json; charset=utf-8", b'{"ok":true}')
             return
         if self.path.startswith("/baemin"):
