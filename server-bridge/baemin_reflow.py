@@ -153,6 +153,8 @@ def reflow_to_lines(text):
         if line == '-' * W and collapsed and collapsed[-1] == '-' * W:
             continue
         collapsed.append(line)
+    while collapsed and not collapsed[-1].strip():   # 끝 빈 줄 제거(하단 여백 축소)
+        collapsed.pop()
     return collapsed
 
 

@@ -31,7 +31,7 @@ class PreformattedReceiptFormatter(private val config: ReceiptConfig = ReceiptCo
                 else -> e.line(raw)
             }
         }
-        e.newline(12) // 하단 피드 — ESC d 무시되므로 LF 반복
+        e.newline(4) // 하단 피드(절단 여백) — ESC d 무시되므로 LF 반복. 절단날 클리어 최소치.
         if (config.openCashDrawer) e.openCashDrawer()
         if (config.cutPaper) e.cut(config.cutMode)
         return e.bytes()
