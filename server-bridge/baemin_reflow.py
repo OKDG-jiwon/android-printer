@@ -62,21 +62,21 @@ def wrap(s, w):
 
 
 def between(left, right):
-    """좌/우 양끝 정렬. 한 줄에 안 들어가면 left를 줄바꿈하고 right는 첫 줄 끝에 둔다.
+    """좌/우 양끝 정렬. 한 줄에 안 들어가면 left(이름)를 통째로 줄바꿈하고
+    right(금액)는 마지막 줄 끝에 우측 정렬한다(들어갈 자리가 없으면 새 줄에).
 
-    (금액 right 는 절대 잘리거나 다음 줄로 안 넘김 — 영수증 가독성.)
+    이름이 길어도 금액 칸을 침범하지 않고, 금액은 항상 우측 정렬로 표시된다.
     """
     gap = W - dw(left) - dw(right)
     if gap >= 1:
         return [left + ' ' * gap + right]
-    # left가 너무 길다 → 첫 줄엔 right가 들어갈 자리만큼만 left를 넣고, 나머지 left는 아래 줄로.
-    first_w = W - dw(right) - 1
-    head = trunc(left, first_w)
-    out = [head + ' ' * (W - dw(head) - dw(right)) + right]
-    tail = left[len(head):]
-    if tail:
-        out.extend(wrap(tail, W))
-    return out
+    lines = wrap(left, W)
+    last = lines[-1]
+    if dw(last) + dw(right) + 1 <= W:
+        lines[-1] = last + ' ' * (W - dw(last) - dw(right)) + right
+    else:
+        lines.append(' ' * (W - dw(right)) + right)
+    return lines
 
 
 def reflow_to_lines(text):
@@ -89,22 +89,16 @@ def reflow_to_lines(text):
         if set(s) <= set('-─┌┐└┘'):  # dashes / box chars
             out.append('-' * W)
             continue
-        if '주문전표' in s:
+        if '주문전표' in s or '주문서' in s:   # 가운데 정렬(고객용 주문전표 / 매장용 주문서)
             out.append(' ' * max(0, (W - dw(s)) // 2) + s)
             continue
-        if s == '[고객용]':
+        if re.fullmatch(r'\[\S{1,6}용\]', s):   # [고객용] / [매장용] 우측 정렬
             out.append(' ' * max(1, W - dw(s)) + s)
             continue
         segs = [x for x in re.split(r'\s{2,}', raw.strip()) if x]
-        # 옵션 줄(└): 마지막 칸이 금액. 금액이 0이면 떼고 이름만 좌측 정렬·줄바꿈
-        # (긴 옵션이 우측 정렬되며 수량/금액 칸을 침범하는 것 방지). 금액이 있으면(배달팁 등) 표시.
+        # 옵션 줄(└): 마지막 칸이 금액 → 금액(0 포함)을 우측 정렬. 이름이 길면 between 이 줄바꿈.
         if raw.lstrip().startswith('└') and len(segs) >= 2:
-            name = '  '.join(segs[:-1])
-            price = segs[-1].strip()
-            if price in ('0', '-0'):
-                out.extend(wrap(name, W))
-            else:
-                out.extend(between(name, price))
+            out.extend(between('  '.join(segs[:-1]), segs[-1].strip()))
         elif len(segs) <= 1:
             out.extend(wrap(segs[0], W) if segs else [''])
         elif len(segs) == 2:
