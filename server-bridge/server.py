@@ -1,7 +1,16 @@
-import http.server, socketserver, sys, os, json, threading, urllib.request, urllib.error
+import http.server, socketserver, sys, os, json, threading, time, urllib.request, urllib.error
+
+# baemin_reflow.py 는 이 파일과 같은 디렉터리에 있어야 한다(배포 시 함께 복사).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from baemin_reflow import reflow_pdf
 
 APK = "/tmp/apk-serve/print.apk"
 UPDIR = "/tmp/apk-serve/uploads"
+
+# --- 배민 변환 큐 (메모리) — PC클라가 PDF 올리면 42칸 텍스트로 변환해 쌓아두고, 앱이 가져가 출력 ---
+_baemin = []          # [{"id": str, "text": str, "at": int}]
+_baemin_lock = threading.Lock()
+_baemin_seq = [0]
 
 # --- 쿠팡 POS API (HAR 캡처로 파악) — 서버가 직접 로그인해 세션 유지 ---
 CREDS = json.load(open("/tmp/apk-serve/coupang_creds.json"))
@@ -109,6 +118,45 @@ def fetch_orders(status):
     return [map_order(o) for o in content]
 
 
+def parse_multipart(body, ctype):
+    """multipart/form-data → [(filename, bytes), ...]. 파일 파트만."""
+    if "boundary=" not in ctype:
+        return []
+    boundary = ctype.split("boundary=", 1)[1].strip().strip('"')
+    files = []
+    for part in body.split(("--" + boundary).encode()):
+        if b"\r\n\r\n" not in part:
+            continue
+        head, data = part.split(b"\r\n\r\n", 1)
+        hs = head.decode("utf-8", "replace")
+        if "filename=" not in hs:
+            continue
+        fn = hs.split("filename=", 1)[1].split("\r\n", 1)[0].strip().strip('"')
+        if not fn:
+            continue
+        if data.endswith(b"\r\n"):
+            data = data[:-2]
+        files.append((fn, data))
+    return files
+
+
+def baemin_enqueue(pdf_bytes):
+    """배민 PDF 바이트 → 임시저장 → 42칸 변환 → 큐 적재. 새 항목 id 반환."""
+    os.makedirs(UPDIR, exist_ok=True)
+    with _baemin_lock:
+        _baemin_seq[0] += 1
+        oid = "bm%d" % _baemin_seq[0]
+    path = os.path.join(UPDIR, oid + ".pdf")
+    with open(path, "wb") as f:
+        f.write(pdf_bytes)
+    text = reflow_pdf(path)
+    item = {"id": oid, "text": text, "at": int(time.time() * 1000)}
+    with _baemin_lock:
+        _baemin.append(item)
+    sys.stderr.write("BAEMIN enqueue %s (%d chars)\n" % (oid, len(text)))
+    return oid
+
+
 DL_PAGE = ("""<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>배달프린터 설치</title></head>
 <body style="margin:0;font-family:sans-serif;background:#f5f5f5;text-align:center;padding:36px 16px;">
@@ -164,45 +212,65 @@ class H(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(200, "application/json; charset=utf-8",
                            json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False).encode("utf-8"))
+        elif self.path.startswith("/baemin"):
+            with _baemin_lock:
+                receipts = list(_baemin)
+            body = json.dumps({"ok": True, "receipts": receipts}, ensure_ascii=False).encode("utf-8")
+            self._send(200, "application/json; charset=utf-8", body)
         elif self.path.startswith("/up"):
             self._send(200, "text/html; charset=utf-8", UP_PAGE)
         else:
             self._send(200, "text/html; charset=utf-8", DL_PAGE)
 
+    def _read_body(self):
+        clen = int(self.headers.get("Content-Length", "0") or "0")
+        return self.rfile.read(clen)
+
     def do_POST(self):
         if self.path.startswith("/uplog"):
-            clen = int(self.headers.get("Content-Length", "0") or "0")
-            body = self.rfile.read(clen)
+            body = self._read_body()
             os.makedirs(UPDIR, exist_ok=True)
             with open(os.path.join(UPDIR, "notiflog.json"), "wb") as f:
                 f.write(body)
             self._send(200, "application/json; charset=utf-8", b'{"ok":true}')
             return
+
+        # 배민 PDF 업로드 → 변환 큐 적재. PC클라 폴더감시기 또는 /baeminup 페이지에서 사용.
+        if self.path.startswith("/baemin/ack"):
+            body = self._read_body()
+            try:
+                oid = json.loads(body.decode("utf-8")).get("id")
+            except Exception:
+                oid = None
+            with _baemin_lock:
+                _baemin[:] = [r for r in _baemin if r["id"] != oid]
+            self._send(200, "application/json; charset=utf-8", b'{"ok":true}')
+            return
+        if self.path.startswith("/baemin"):
+            ctype = self.headers.get("Content-Type", "")
+            files = parse_multipart(self._read_body(), ctype)
+            ids = []
+            try:
+                for _, data in files:
+                    if data:
+                        ids.append(baemin_enqueue(data))
+            except Exception as e:
+                self._send(200, "application/json; charset=utf-8",
+                           json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False).encode("utf-8"))
+                return
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps({"ok": True, "ids": ids}, ensure_ascii=False).encode("utf-8"))
+            return
+
         if not self.path.startswith("/upload"):
             self._send(404, "text/plain; charset=utf-8", b"not found"); return
-        ctype = self.headers.get("Content-Type", "")
-        clen = int(self.headers.get("Content-Length", "0") or "0")
-        body = self.rfile.read(clen)
-        boundary = ctype.split("boundary=", 1)[1].strip().strip('"') if "boundary=" in ctype else None
         os.makedirs(UPDIR, exist_ok=True)
         saved = []
-        if boundary:
-            for part in body.split(("--" + boundary).encode()):
-                if b"\r\n\r\n" not in part:
-                    continue
-                head, data = part.split(b"\r\n\r\n", 1)
-                hs = head.decode("utf-8", "replace")
-                if "filename=" not in hs:
-                    continue
-                fn = hs.split("filename=", 1)[1].split("\r\n", 1)[0].strip().strip('"')
-                if not fn:
-                    continue
-                if data.endswith(b"\r\n"):
-                    data = data[:-2]
-                safe = os.path.basename(fn).replace("/", "_") or "upload.bin"
-                with open(os.path.join(UPDIR, safe), "wb") as f:
-                    f.write(data)
-                saved.append(safe)
+        for fn, data in parse_multipart(self._read_body(), self.headers.get("Content-Type", "")):
+            safe = os.path.basename(fn).replace("/", "_") or "upload.bin"
+            with open(os.path.join(UPDIR, safe), "wb") as f:
+                f.write(data)
+            saved.append(safe)
         msg = ("업로드 완료: " + ", ".join(saved)) if saved else "파일 없음"
         self._send(200, "text/html; charset=utf-8",
                    ("<html><meta charset=utf-8><body style='font-family:sans-serif;text-align:center;padding:40px'>"

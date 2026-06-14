@@ -61,7 +61,7 @@ import kr.deliveryprint.di.ServiceLocator
 import kr.deliveryprint.service.PrintForegroundService
 import kotlinx.coroutines.launch
 
-private enum class Screen { HOME, PRINTER, LOG, CLOUD }
+private enum class Screen { HOME, PRINTER, LOG, CLOUD, BAEMIN }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,6 +85,7 @@ private fun AppRoot() {
         Screen.PRINTER -> "프린터 설정"
         Screen.LOG -> "알림 로그"
         Screen.CLOUD -> "클라우드 주문 (쿠팡)"
+        Screen.BAEMIN -> "배민 주문 (PDF)"
     }
     Scaffold(topBar = { TopAppBar(title = { Text(title) }) }) { padding ->
         Column(modifier = Modifier.padding(padding)) {
@@ -93,17 +94,24 @@ private fun AppRoot() {
                     onOpenPrinter = { screen = Screen.PRINTER },
                     onOpenLog = { screen = Screen.LOG },
                     onOpenCloud = { screen = Screen.CLOUD },
+                    onOpenBaemin = { screen = Screen.BAEMIN },
                 )
                 Screen.PRINTER -> PrinterSettingsScreen(onBack = { screen = Screen.HOME })
                 Screen.LOG -> NotificationLogScreen(onBack = { screen = Screen.HOME })
                 Screen.CLOUD -> CloudOrdersScreen(onBack = { screen = Screen.HOME })
+                Screen.BAEMIN -> BaeminOrdersScreen(onBack = { screen = Screen.HOME })
             }
         }
     }
 }
 
 @Composable
-private fun HomeScreen(onOpenPrinter: () -> Unit, onOpenLog: () -> Unit, onOpenCloud: () -> Unit) {
+private fun HomeScreen(
+    onOpenPrinter: () -> Unit,
+    onOpenLog: () -> Unit,
+    onOpenCloud: () -> Unit,
+    onOpenBaemin: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberComposableScope()
     val notiGranted by rememberNotificationAccessGranted()
@@ -171,6 +179,8 @@ private fun HomeScreen(onOpenPrinter: () -> Unit, onOpenLog: () -> Unit, onOpenC
         }
 
         Button(onClick = onOpenCloud, modifier = Modifier.fillMaxWidth()) { Text("☁ 클라우드 주문 (쿠팡) 불러오기") }
+
+        Button(onClick = onOpenBaemin, modifier = Modifier.fillMaxWidth()) { Text("🛵 배민 주문 (PDF) 불러오기") }
 
         OutlinedButton(onClick = onOpenLog, modifier = Modifier.fillMaxWidth()) { Text("알림 로그 보기") }
 
@@ -390,6 +400,76 @@ private fun CloudOrdersScreen(onBack: () -> Unit) {
                             onClick = {
                                 PrintForegroundService.start(context)
                                 ServiceLocator.printController.submit(order)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("출력") }
+                    }
+                }
+            }
+        }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("뒤로") }
+    }
+}
+
+@Composable
+private fun BaeminOrdersScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberComposableScope()
+    var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun load() {
+        loading = true
+        error = null
+        scope.launch {
+            CloudOrderClient.fetchBaemin()
+                .onSuccess { orders = it }
+                .onFailure { error = it.message ?: "불러오기 실패" }
+            loading = false
+        }
+    }
+    LaunchedEffect(Unit) { load() }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "배민 PC 클라이언트가 PDF로 저장한 주문전표를 서버가 42칸으로 변환해 보관합니다. " +
+                "출력하면 서버 큐에서 제거됩니다(중복 방지).",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { load() }) { Text("새로고침") }
+        }
+        if (loading) Text("불러오는 중…")
+        error?.let {
+            Text("오류: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        if (!loading && error == null && orders.isEmpty()) Text("대기 중인 배민 주문이 없습니다.")
+
+        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(orders) { order ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("배민 전표 #${order.orderNumber ?: ""}", style = MaterialTheme.typography.titleSmall)
+                        // 변환 텍스트 미리보기(앞 6줄)
+                        order.preformattedText?.lineSequence()?.take(6)?.forEach { line ->
+                            Text(line, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = {
+                                PrintForegroundService.start(context)
+                                ServiceLocator.printController.submit(order)
+                                // 출력 큐에 넣은 뒤 서버에서 제거(중복 방지)
+                                order.orderNumber?.let { id ->
+                                    scope.launch {
+                                        CloudOrderClient.ackBaemin(id)
+                                        orders = orders.filterNot { it.orderNumber == id }
+                                    }
+                                }
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("출력") }

@@ -47,5 +47,10 @@ data class Order(
     val deliveryAddress: String? = null,
     val phoneNumber: String? = null,
     val rawText: String = "",
+    /**
+     * 이미 프린터 폭(42칸)에 맞춰 재배치된 영수증 본문. null 이 아니면
+     * 구조화 포맷터를 건너뛰고 이 텍스트를 그대로 출력한다(배민 PDF 변환 결과 등).
+     */
+    val preformattedText: String? = null,
     val receivedAt: Long = 0L,
 )

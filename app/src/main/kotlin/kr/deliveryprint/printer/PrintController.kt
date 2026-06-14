@@ -4,6 +4,7 @@ import android.util.Log
 import kr.deliveryprint.core.model.Order
 import kr.deliveryprint.core.model.Platform
 import kr.deliveryprint.core.printer.CoupangReceiptFormatter
+import kr.deliveryprint.core.printer.PreformattedReceiptFormatter
 import kr.deliveryprint.core.printer.ReceiptFormatter
 import kr.deliveryprint.data.SettingsStore
 import kotlinx.coroutines.channels.Channel
@@ -43,11 +44,14 @@ class PrintController(
 
     private suspend fun printWithRetry(order: Order) {
         val current = settings.settings.first()
-        // 쿠팡 주문은 실제 쿠팡이츠 영수증 레이아웃으로, 그 외는 기본 포맷으로 출력.
-        val bytes = if (order.platform == Platform.COUPANG_EATS) {
-            CoupangReceiptFormatter(current.receipt).format(order)
-        } else {
-            ReceiptFormatter(current.receipt).format(order)
+        // 1) 이미 42칸으로 재배치된 본문(배민 PDF 변환 등)은 그대로 출력.
+        // 2) 쿠팡 주문은 실제 쿠팡이츠 영수증 레이아웃으로.
+        // 3) 그 외는 기본 포맷.
+        val pre = order.preformattedText
+        val bytes = when {
+            pre != null -> PreformattedReceiptFormatter(current.receipt).format(pre)
+            order.platform == Platform.COUPANG_EATS -> CoupangReceiptFormatter(current.receipt).format(order)
+            else -> ReceiptFormatter(current.receipt).format(order)
         }
         val printer = printerFactory.create(current)
 

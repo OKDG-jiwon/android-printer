@@ -39,6 +39,52 @@ object CloudOrderClient {
         }
     }
 
+    /**
+     * 서버에 쌓인 배민 변환 영수증(이미 42칸 재배치된 텍스트)을 가져온다.
+     * PC 클라이언트가 올린 PDF 를 서버가 변환해 큐에 보관한 것.
+     */
+    suspend fun fetchBaemin(): Result<List<Order>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val conn = (URL("$BASE/baemin").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10_000
+                readTimeout = 15_000
+            }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream.bufferedReader().use { it.readText() }
+            val root = JSONObject(text)
+            if (!root.optBoolean("ok")) error(root.optString("error", "서버 오류 (HTTP $code)"))
+            val arr = root.getJSONArray("receipts")
+            (0 until arr.length()).map { i ->
+                val r = arr.getJSONObject(i)
+                Order(
+                    platform = Platform.BAEMIN,
+                    orderType = OrderType.DELIVERY,
+                    orderNumber = r.optString("id"),
+                    preformattedText = r.optString("text"),
+                    receivedAt = r.optLong("at", 0L),
+                )
+            }
+        }
+    }
+
+    /** 출력 완료한 배민 영수증을 서버 큐에서 제거(중복출력 방지). */
+    suspend fun ackBaemin(id: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val conn = (URL("$BASE/baemin/ack").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                setRequestProperty("Content-Type", "application/json")
+            }
+            conn.outputStream.use { it.write("""{"id":"$id"}""".toByteArray()) }
+            conn.responseCode // 트리거
+            Unit
+        }
+    }
+
     private fun parseOrder(o: JSONObject): Order {
         val itemsArr = o.optJSONArray("items")
         val items = if (itemsArr == null) emptyList() else (0 until itemsArr.length()).map { i ->
