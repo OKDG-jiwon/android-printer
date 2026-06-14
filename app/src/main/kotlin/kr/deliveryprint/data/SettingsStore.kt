@@ -23,6 +23,8 @@ data class AppSettings(
     val bluetoothMac: String? = null,
     val kiccComPort: String = "INTERNAL",
     val autoPrint: Boolean = true,
+    /** 클라우드 중계 서버 주소. 터널/오라클 등으로 바뀌면 앱에서 값만 고치면 됨(재빌드 불필요). */
+    val serverBaseUrl: String = CloudOrderClient.DEFAULT_BASE,
     val receipt: ReceiptConfig = ReceiptConfig(),
 )
 
@@ -37,6 +39,7 @@ class SettingsStore(private val context: Context) {
             bluetoothMac = prefs[KEY_BT_MAC],
             kiccComPort = prefs[KEY_KICC_PORT] ?: "INTERNAL",
             autoPrint = prefs[KEY_AUTO_PRINT] ?: true,
+            serverBaseUrl = prefs[KEY_SERVER_URL]?.ifBlank { null } ?: CloudOrderClient.DEFAULT_BASE,
             receipt = ReceiptConfig(
                 widthChars = prefs[KEY_WIDTH] ?: 32,
                 cutPaper = prefs[KEY_CUT] ?: true,
@@ -51,6 +54,8 @@ class SettingsStore(private val context: Context) {
     suspend fun setBluetoothMac(mac: String) = context.dataStore.edit { it[KEY_BT_MAC] = mac }
     suspend fun setKiccComPort(port: String) = context.dataStore.edit { it[KEY_KICC_PORT] = port }
     suspend fun setAutoPrint(enabled: Boolean) = context.dataStore.edit { it[KEY_AUTO_PRINT] = enabled }
+    suspend fun setServerBaseUrl(url: String) =
+        context.dataStore.edit { it[KEY_SERVER_URL] = url.trim().trimEnd('/') }
     suspend fun setWidthChars(width: Int) = context.dataStore.edit { it[KEY_WIDTH] = width }
     suspend fun setCutPaper(enabled: Boolean) = context.dataStore.edit { it[KEY_CUT] = enabled }
     suspend fun setOpenCashDrawer(enabled: Boolean) = context.dataStore.edit { it[KEY_DRAWER] = enabled }
@@ -60,6 +65,7 @@ class SettingsStore(private val context: Context) {
         private val KEY_BT_MAC = stringPreferencesKey("bluetooth_mac")
         private val KEY_KICC_PORT = stringPreferencesKey("kicc_com_port")
         private val KEY_AUTO_PRINT = booleanPreferencesKey("auto_print")
+        private val KEY_SERVER_URL = stringPreferencesKey("server_base_url")
         private val KEY_WIDTH = intPreferencesKey("paper_width_chars")
         private val KEY_CUT = booleanPreferencesKey("cut_paper")
         private val KEY_DRAWER = booleanPreferencesKey("open_cash_drawer")

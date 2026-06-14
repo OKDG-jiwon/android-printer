@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -283,6 +284,32 @@ private fun PrinterSettingsScreen(onBack: () -> Unit) {
                 onCheckedChange = { scope.launch { ServiceLocator.settings.setCutPaper(it) } },
             )
         }
+
+        HorizontalDivider()
+
+        Text("서버 주소", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "쿠팡·배민 주문을 받아오는 중계 서버 주소입니다. 터널/오라클 등으로 주소가 바뀌면 " +
+                "여기만 고치면 됩니다(앱 재설치 불필요).",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        var urlText by remember(current.serverBaseUrl) { mutableStateOf(current.serverBaseUrl) }
+        OutlinedTextField(
+            value = urlText,
+            onValueChange = { urlText = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("https://...") },
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { scope.launch { ServiceLocator.settings.setServerBaseUrl(urlText) } },
+                modifier = Modifier.weight(1f),
+            ) { Text("서버 주소 저장") }
+            OutlinedButton(onClick = { urlText = CloudOrderClient.DEFAULT_BASE }) { Text("기본값") }
+        }
+
+        HorizontalDivider()
 
         Button(
             onClick = {

@@ -1,6 +1,7 @@
 package kr.deliveryprint.di
 
 import android.content.Context
+import kr.deliveryprint.data.CloudOrderClient
 import kr.deliveryprint.data.CloudPoller
 import kr.deliveryprint.data.SettingsStore
 import kr.deliveryprint.printer.PrintController
@@ -8,6 +9,9 @@ import kr.deliveryprint.printer.PrinterFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * 경량 수동 DI. 규모가 작아 Hilt 등 프레임워크 대신 lazy 싱글톤으로 묶는다.
@@ -19,6 +23,12 @@ object ServiceLocator {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+        // 설정의 서버 주소를 CloudOrderClient 에 반영(설정 변경 시 재빌드 없이 즉시 적용).
+        appScope.launch {
+            settings.settings.map { it.serverBaseUrl }.distinctUntilChanged().collect {
+                CloudOrderClient.base = it
+            }
+        }
     }
 
     val appScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
