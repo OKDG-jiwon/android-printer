@@ -124,6 +124,14 @@ def reflow_to_lines(text):
         if re.fullmatch(r'\[\S{1,6}용\]', s):   # [매장용] 우측 정렬(보통)
             push(out, NORMAL, [' ' * max(1, W - dw(s)) + s])
             continue
+        # 상단 주문번호(콜론 없는 짧은 코드) → 크게. 하단 '주문번호: T2...' 전체코드는 보통.
+        if s.startswith('주문번호') and not s.startswith('주문번호:'):
+            push(out, BIG, wrap(s, W))
+            continue
+        # 요청사항 값(가게 :/배달 : 등 ' : ' 포함, 수저포크) → 크게. '요청사항:'/'친환경:' 라벨은 보통.
+        if ' : ' in s or s.startswith('수저포크'):
+            push(out, BIG, wrap(s, W))
+            continue
         segs = [x for x in re.split(r'\s{2,}', raw.strip()) if x]
         # 옵션 줄(└): 마지막 칸이 금액 → 금액(0 포함)을 우측 정렬. 이름이 길면 between 이 줄바꿈.
         if raw.lstrip().startswith('└') and len(segs) >= 2:
