@@ -21,6 +21,17 @@ import sys
 
 W = 42
 
+# 줄 스타일 접두어(앱이 ESC/POS로 렌더). BIG=세로2배+굵게, BOLD=굵게, NORMAL=보통.
+BIG = '\x01'
+BOLD = '\x02'
+NORMAL = ''
+
+
+def push(out, style, lines):
+    """스타일 접두어를 붙여 여러 줄을 out에 추가."""
+    for l in lines:
+        out.append(style + l)
+
 
 def is_wide(c):
     o = ord(c)
@@ -107,24 +118,28 @@ def reflow_to_lines(text):
         if is_div:
             out.append('-' * W)
             continue
-        if '주문서' in s or '주문전표' in s:   # 제목 가운데 정렬
-            out.append(' ' * max(0, (W - dw(s)) // 2) + s)
+        if '주문서' in s or '주문전표' in s:   # 제목: 가운데 + 크게/굵게
+            push(out, BIG, [' ' * max(0, (W - dw(s)) // 2) + s])
             continue
-        if re.fullmatch(r'\[\S{1,6}용\]', s):   # [매장용] 우측 정렬
-            out.append(' ' * max(1, W - dw(s)) + s)
+        if re.fullmatch(r'\[\S{1,6}용\]', s):   # [매장용] 우측 정렬(보통)
+            push(out, NORMAL, [' ' * max(1, W - dw(s)) + s])
             continue
         segs = [x for x in re.split(r'\s{2,}', raw.strip()) if x]
         # 옵션 줄(└): 마지막 칸이 금액 → 금액(0 포함)을 우측 정렬. 이름이 길면 between 이 줄바꿈.
         if raw.lstrip().startswith('└') and len(segs) >= 2:
-            out.extend(between('  '.join(segs[:-1]), segs[-1].strip()))
+            push(out, NORMAL, between('  '.join(segs[:-1]), segs[-1].strip()))
         elif len(segs) <= 1:
-            out.extend(wrap(segs[0], W) if segs else [''])
+            push(out, NORMAL, wrap(segs[0], W) if segs else [''])
         elif len(segs) == 2:
-            out.extend(between(segs[0], segs[1]))
+            left = segs[0]
+            style = BIG if left.replace(' ', '') == '총결제금액' else (BOLD if left == '배달팁' else NORMAL)
+            push(out, style, between(segs[0], segs[1]))
         else:
-            out.extend(between(segs[0], '  '.join(segs[1:])))
+            left = segs[0]
+            style = NORMAL if left == '메뉴' else (BOLD if left == '주문금액' else BIG)  # BIG=메뉴 항목
+            push(out, style, between(segs[0], '  '.join(segs[1:])))
 
-    # 줄 제거로 생긴 연속 구분선은 1개로 축약.
+    # 줄 제거로 생긴 연속 구분선은 1개로 축약(구분선은 NORMAL=접두어 없음).
     collapsed = []
     for line in out:
         if line == '-' * W and collapsed and collapsed[-1] == '-' * W:
@@ -150,6 +165,13 @@ def reflow_pdf(pdf_path):
 if __name__ == '__main__':
     arg = sys.argv[1]
     txt = reflow_pdf(arg) if arg.lower().endswith('.pdf') else reflow_text(open(arg, encoding='utf-8').read())
+    # 미리보기: 스타일 접두어를 [B]/[b] 로 표시.
     print('=' * W)
-    print(txt)
+    for line in txt.split('\n'):
+        if line.startswith(BIG):
+            print('[B] ' + line[1:])
+        elif line.startswith(BOLD):
+            print('[b] ' + line[1:])
+        else:
+            print('    ' + line)
     print('=' * W)

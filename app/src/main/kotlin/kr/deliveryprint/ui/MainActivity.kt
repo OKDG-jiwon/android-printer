@@ -454,7 +454,8 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("배민 전표 #${order.orderNumber ?: ""}", style = MaterialTheme.typography.titleSmall)
                         order.preformattedText?.lineSequence()?.take(6)?.forEach { line ->
-                            Text(line, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // 스타일 접두어(/) 제거 후 미리보기.
+                            Text(line.trimStart('\u0001', '\u0002'), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Spacer(Modifier.height(6.dp))
                         Button(
