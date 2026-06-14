@@ -77,6 +77,6 @@ class CloudPoller(
 
     companion object {
         private const val TAG = "CloudPoller"
-        private const val POLL_INTERVAL_MS = 20_000L
+        private const val POLL_INTERVAL_MS = 5_000L
     }
 }

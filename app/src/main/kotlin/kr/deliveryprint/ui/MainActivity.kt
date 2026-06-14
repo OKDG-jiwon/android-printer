@@ -119,7 +119,7 @@ private fun HomeScreen(
                 Text("자동 출력 동작 방식", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "쿠팡·배민에 새 주문이 들어오면 중계 서버가 받아두고, 이 앱이 약 20초마다 " +
+                    "쿠팡·배민에 새 주문이 들어오면 중계 서버가 받아두고, 이 앱이 약 5초마다 " +
                         "가져와 프린터로 자동 출력합니다. 출력 버튼을 누를 필요가 없습니다.",
                     style = MaterialTheme.typography.bodySmall,
                 )
