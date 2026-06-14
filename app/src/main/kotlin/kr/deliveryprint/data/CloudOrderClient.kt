@@ -20,17 +20,24 @@ import java.net.URL
  */
 object CloudOrderClient {
 
-    /** 기본 서버 주소(임시 터널). 사용자가 설정에서 바꾸지 않았을 때의 값. */
-    const val DEFAULT_BASE = "https://void-pages-sega-advertisers.trycloudflare.com"
+    // 쿠팡과 배민은 서버가 다르다(쿠팡 API는 한국 IP 필요 → 맥, 배민은 지역 무관 → 오라클 VM).
+    /** 쿠팡 중계 서버 기본 주소(맥 터널). */
+    const val COUPANG_DEFAULT = "https://void-pages-sega-advertisers.trycloudflare.com"
+    /** 배민 중계 서버 기본 주소(오라클 VM, Tailscale Funnel 고정 HTTPS). */
+    const val BAEMIN_DEFAULT = "https://instance-20260612-0223.tail5d0f46.ts.net"
 
-    /** 현재 사용 중인 서버 주소. ServiceLocator 가 설정 변경을 여기에 반영한다. */
+    /** 현재 쿠팡 서버 주소. ServiceLocator 가 설정 변경을 반영한다. */
     @Volatile
-    var base: String = DEFAULT_BASE
+    var coupangBase: String = COUPANG_DEFAULT
+
+    /** 현재 배민 서버 주소. */
+    @Volatile
+    var baeminBase: String = BAEMIN_DEFAULT
 
     /** status: PENDING(신규/진행) | COMPLETED(완료) 등 쿠팡 상태값. */
     suspend fun fetch(status: String): Result<List<Order>> = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL("$base/orders?status=$status").openConnection() as HttpURLConnection).apply {
+            val conn = (URL("$coupangBase/orders?status=$status").openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 10_000
                 readTimeout = 15_000
@@ -51,7 +58,7 @@ object CloudOrderClient {
      */
     suspend fun fetchBaemin(): Result<List<Order>> = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL("$base/baemin").openConnection() as HttpURLConnection).apply {
+            val conn = (URL("$baeminBase/baemin").openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 10_000
                 readTimeout = 15_000
@@ -78,7 +85,7 @@ object CloudOrderClient {
     /** 출력 완료한 배민 영수증을 서버 큐에서 제거(중복출력 방지). */
     suspend fun ackBaemin(id: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL("$base/baemin/ack").openConnection() as HttpURLConnection).apply {
+            val conn = (URL("$baeminBase/baemin/ack").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
                 connectTimeout = 10_000

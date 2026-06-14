@@ -289,24 +289,41 @@ private fun PrinterSettingsScreen(onBack: () -> Unit) {
 
         Text("서버 주소", style = MaterialTheme.typography.titleMedium)
         Text(
-            "쿠팡·배민 주문을 받아오는 중계 서버 주소입니다. 터널/오라클 등으로 주소가 바뀌면 " +
+            "쿠팡과 배민은 중계 서버가 다릅니다(쿠팡=맥, 배민=오라클 VM). 주소가 바뀌면 " +
                 "여기만 고치면 됩니다(앱 재설치 불필요).",
             style = MaterialTheme.typography.bodySmall,
         )
-        var urlText by remember(current.serverBaseUrl) { mutableStateOf(current.serverBaseUrl) }
+
+        var coupangUrl by remember(current.coupangServerUrl) { mutableStateOf(current.coupangServerUrl) }
         OutlinedTextField(
-            value = urlText,
-            onValueChange = { urlText = it },
+            value = coupangUrl,
+            onValueChange = { coupangUrl = it },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text("https://...") },
+            label = { Text("쿠팡 서버 (https://...)") },
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { scope.launch { ServiceLocator.settings.setServerBaseUrl(urlText) } },
+                onClick = { scope.launch { ServiceLocator.settings.setCoupangServerUrl(coupangUrl) } },
                 modifier = Modifier.weight(1f),
-            ) { Text("서버 주소 저장") }
-            OutlinedButton(onClick = { urlText = CloudOrderClient.DEFAULT_BASE }) { Text("기본값") }
+            ) { Text("쿠팡 주소 저장") }
+            OutlinedButton(onClick = { coupangUrl = CloudOrderClient.COUPANG_DEFAULT }) { Text("기본값") }
+        }
+
+        var baeminUrl by remember(current.baeminServerUrl) { mutableStateOf(current.baeminServerUrl) }
+        OutlinedTextField(
+            value = baeminUrl,
+            onValueChange = { baeminUrl = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("배민 서버 (https://...)") },
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { scope.launch { ServiceLocator.settings.setBaeminServerUrl(baeminUrl) } },
+                modifier = Modifier.weight(1f),
+            ) { Text("배민 주소 저장") }
+            OutlinedButton(onClick = { baeminUrl = CloudOrderClient.BAEMIN_DEFAULT }) { Text("기본값") }
         }
 
         HorizontalDivider()

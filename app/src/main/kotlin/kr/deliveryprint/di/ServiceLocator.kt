@@ -10,7 +10,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -23,10 +22,13 @@ object ServiceLocator {
 
     fun init(context: Context) {
         appContext = context.applicationContext
-        // 설정의 서버 주소를 CloudOrderClient 에 반영(설정 변경 시 재빌드 없이 즉시 적용).
+        // 설정의 서버 주소(쿠팡/배민)를 CloudOrderClient 에 반영(설정 변경 시 재빌드 없이 즉시 적용).
         appScope.launch {
-            settings.settings.map { it.serverBaseUrl }.distinctUntilChanged().collect {
-                CloudOrderClient.base = it
+            settings.settings.distinctUntilChanged { a, b ->
+                a.coupangServerUrl == b.coupangServerUrl && a.baeminServerUrl == b.baeminServerUrl
+            }.collect {
+                CloudOrderClient.coupangBase = it.coupangServerUrl
+                CloudOrderClient.baeminBase = it.baeminServerUrl
             }
         }
     }
