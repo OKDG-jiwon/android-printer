@@ -2,6 +2,8 @@ package kr.deliveryprint.printer
 
 import android.util.Log
 import kr.deliveryprint.core.model.Order
+import kr.deliveryprint.core.model.Platform
+import kr.deliveryprint.core.printer.CoupangReceiptFormatter
 import kr.deliveryprint.core.printer.ReceiptFormatter
 import kr.deliveryprint.data.SettingsStore
 import kotlinx.coroutines.channels.Channel
@@ -41,7 +43,12 @@ class PrintController(
 
     private suspend fun printWithRetry(order: Order) {
         val current = settings.settings.first()
-        val bytes = ReceiptFormatter(current.receipt).format(order)
+        // 쿠팡 주문은 실제 쿠팡이츠 영수증 레이아웃으로, 그 외는 기본 포맷으로 출력.
+        val bytes = if (order.platform == Platform.COUPANG_EATS) {
+            CoupangReceiptFormatter(current.receipt).format(order)
+        } else {
+            ReceiptFormatter(current.receipt).format(order)
+        }
         val printer = printerFactory.create(current)
 
         var lastError = "알 수 없는 오류"

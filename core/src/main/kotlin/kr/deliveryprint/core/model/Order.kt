@@ -19,6 +19,8 @@ data class OrderItem(
     val name: String,
     val quantity: Int = 1,
     val price: Int? = null,
+    /** 옵션명 목록(예: "ICE", "덜 달게"). 영수증에 "+ 옵션" 줄로 표시. */
+    val options: List<String> = emptyList(),
 )
 
 /**
@@ -33,7 +35,14 @@ data class Order(
     val storeName: String? = null,
     val orderNumber: String? = null,
     val items: List<OrderItem> = emptyList(),
+    /** 주문금액(메뉴 합계, 배달비 제외). */
+    val subtotal: Int? = null,
+    /** 배달비. */
+    val deliveryFee: Int? = null,
+    /** 최종 결제금액. */
     val totalAmount: Int? = null,
+    /** 결제수단 표시문구(예: "쿠페이 선결제 완료"). 없으면 결제 줄 생략. */
+    val paymentMethod: String? = null,
     val customerRequest: String? = null,
     val deliveryAddress: String? = null,
     val phoneNumber: String? = null,

@@ -35,6 +35,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,12 +55,13 @@ import kr.deliveryprint.core.model.Order
 import kr.deliveryprint.core.model.OrderItem
 import kr.deliveryprint.core.model.OrderType
 import kr.deliveryprint.core.model.Platform
+import kr.deliveryprint.data.CloudOrderClient
 import kr.deliveryprint.data.PrinterType
 import kr.deliveryprint.di.ServiceLocator
 import kr.deliveryprint.service.PrintForegroundService
 import kotlinx.coroutines.launch
 
-private enum class Screen { HOME, PRINTER, LOG }
+private enum class Screen { HOME, PRINTER, LOG, CLOUD }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,6 +84,7 @@ private fun AppRoot() {
         Screen.HOME -> "배달주문 출력"
         Screen.PRINTER -> "프린터 설정"
         Screen.LOG -> "알림 로그"
+        Screen.CLOUD -> "클라우드 주문 (쿠팡)"
     }
     Scaffold(topBar = { TopAppBar(title = { Text(title) }) }) { padding ->
         Column(modifier = Modifier.padding(padding)) {
@@ -89,16 +92,18 @@ private fun AppRoot() {
                 Screen.HOME -> HomeScreen(
                     onOpenPrinter = { screen = Screen.PRINTER },
                     onOpenLog = { screen = Screen.LOG },
+                    onOpenCloud = { screen = Screen.CLOUD },
                 )
                 Screen.PRINTER -> PrinterSettingsScreen(onBack = { screen = Screen.HOME })
                 Screen.LOG -> NotificationLogScreen(onBack = { screen = Screen.HOME })
+                Screen.CLOUD -> CloudOrdersScreen(onBack = { screen = Screen.HOME })
             }
         }
     }
 }
 
 @Composable
-private fun HomeScreen(onOpenPrinter: () -> Unit, onOpenLog: () -> Unit) {
+private fun HomeScreen(onOpenPrinter: () -> Unit, onOpenLog: () -> Unit, onOpenCloud: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberComposableScope()
     val notiGranted by rememberNotificationAccessGranted()
@@ -127,7 +132,7 @@ private fun HomeScreen(onOpenPrinter: () -> Unit, onOpenLog: () -> Unit) {
             value = settings?.let {
                 when (it.printerType) {
                     PrinterType.BLUETOOTH -> it.bluetoothMac?.let { mac -> "블루투스 ($mac)" } ?: "미선택"
-                    PrinterType.KICC_INNER -> "내장 프린터 (SDK 필요)"
+                    PrinterType.KICC_INNER -> "내장 프린터 (KICC · ${it.kiccComPort})"
                 }
             } ?: "...",
             ok = settings?.bluetoothMac != null || settings?.printerType == PrinterType.KICC_INNER,
@@ -164,6 +169,8 @@ private fun HomeScreen(onOpenPrinter: () -> Unit, onOpenLog: () -> Unit) {
                 Text("서비스 중지")
             }
         }
+
+        Button(onClick = onOpenCloud, modifier = Modifier.fillMaxWidth()) { Text("☁ 클라우드 주문 (쿠팡) 불러오기") }
 
         OutlinedButton(onClick = onOpenLog, modifier = Modifier.fillMaxWidth()) { Text("알림 로그 보기") }
 
@@ -316,6 +323,76 @@ private fun NotificationLogScreen(onBack: () -> Unit) {
                             maxLines = 6,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    }
+                }
+            }
+        }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("뒤로") }
+    }
+}
+
+@Composable
+private fun CloudOrdersScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberComposableScope()
+    var status by remember { mutableStateOf("PENDING") }
+    var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun load() {
+        loading = true
+        error = null
+        scope.launch {
+            CloudOrderClient.fetch(status)
+                .onSuccess { orders = it }
+                .onFailure { error = it.message ?: "불러오기 실패" }
+            loading = false
+        }
+    }
+    LaunchedEffect(status) { load() }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("PENDING" to "신규/진행", "COMPLETED" to "완료").forEach { (s, label) ->
+                OutlinedButton(onClick = { status = s }) {
+                    Text(if (status == s) "● $label" else label)
+                }
+            }
+            OutlinedButton(onClick = { load() }) { Text("새로고침") }
+        }
+        if (loading) Text("불러오는 중…")
+        error?.let {
+            Text("오류: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        if (!loading && error == null && orders.isEmpty()) Text("주문이 없습니다.")
+
+        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(orders) { order ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            "${order.orderType.displayName} · ${order.storeName ?: ""}  #${order.orderNumber ?: ""}",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        order.items.forEach { item ->
+                            Text("• ${item.name} x${item.quantity}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        order.totalAmount?.let {
+                            Text("합계 ${"%,d".format(it)}원", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        order.customerRequest?.let { Text("요청: $it", style = MaterialTheme.typography.bodySmall) }
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = {
+                                PrintForegroundService.start(context)
+                                ServiceLocator.printController.submit(order)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("출력") }
                     }
                 }
             }
