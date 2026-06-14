@@ -17,3 +17,8 @@ local.properties
 # Keystore
 *.jks
 *.keystore
+
+# Kotlin / Python 부산물
+.kotlin/
+__pycache__/
+*.pyc
