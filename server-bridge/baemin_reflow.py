@@ -96,7 +96,16 @@ def reflow_to_lines(text):
             out.append(' ' * max(1, W - dw(s)) + s)
             continue
         segs = [x for x in re.split(r'\s{2,}', raw.strip()) if x]
-        if len(segs) <= 1:
+        # 옵션 줄(└): 마지막 칸이 금액. 금액이 0이면 떼고 이름만 좌측 정렬·줄바꿈
+        # (긴 옵션이 우측 정렬되며 수량/금액 칸을 침범하는 것 방지). 금액이 있으면(배달팁 등) 표시.
+        if raw.lstrip().startswith('└') and len(segs) >= 2:
+            name = '  '.join(segs[:-1])
+            price = segs[-1].strip()
+            if price in ('0', '-0'):
+                out.extend(wrap(name, W))
+            else:
+                out.extend(between(name, price))
+        elif len(segs) <= 1:
             out.extend(wrap(segs[0], W) if segs else [''])
         elif len(segs) == 2:
             out.extend(between(segs[0], segs[1]))
