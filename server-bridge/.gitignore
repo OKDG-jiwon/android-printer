@@ -1,0 +1,4 @@
+# 로그인 자격증명(쿠팡 아이디/비번) — 절대 커밋 금지
+coupang_creds.json
+uploads/
+*.apk
