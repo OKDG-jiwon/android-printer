@@ -1,0 +1,17 @@
+[Unit]
+Description=Delivery print bridge (쿠팡/배민 주문 중계 서버)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/printbridge
+Environment=PRINTBRIDGE_DIR=/opt/printbridge
+Environment=PRINTBRIDGE_PORT=8765
+ExecStart=/usr/bin/python3 /opt/printbridge/server.py
+Restart=always
+RestartSec=3
+# 로그는 journalctl -u printbridge 로 확인
+
+[Install]
+WantedBy=multi-user.target

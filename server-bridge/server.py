@@ -4,8 +4,13 @@ import http.server, socketserver, sys, os, json, threading, time, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from baemin_reflow import reflow_pdf
 
-APK = "/tmp/apk-serve/print.apk"
-UPDIR = "/tmp/apk-serve/uploads"
+# 경로·포트는 환경변수로 설정(미설정 시 기존 /tmp 기본값 — 로컬 터널 배포 호환).
+# 오라클 등 상시 서버에선 PRINTBRIDGE_DIR=/opt/printbridge 처럼 안정 경로를 지정한다.
+BASE_DIR = os.environ.get("PRINTBRIDGE_DIR", "/tmp/apk-serve")
+APK = os.environ.get("PRINTBRIDGE_APK", os.path.join(BASE_DIR, "print.apk"))
+UPDIR = os.environ.get("PRINTBRIDGE_UPLOADS", os.path.join(BASE_DIR, "uploads"))
+CREDS_PATH = os.environ.get("PRINTBRIDGE_CREDS", os.path.join(BASE_DIR, "coupang_creds.json"))
+PORT = int(os.environ.get("PRINTBRIDGE_PORT", "8765"))
 
 # --- 배민 변환 큐 (메모리) — PC클라가 PDF 올리면 42칸 텍스트로 변환해 쌓아두고, 앱이 가져가 출력 ---
 _baemin = []          # [{"id": str, "text": str, "at": int}]
@@ -13,8 +18,13 @@ _baemin_lock = threading.Lock()
 _baemin_seq = [0]
 
 # --- 쿠팡 POS API (HAR 캡처로 파악) — 서버가 직접 로그인해 세션 유지 ---
-CREDS = json.load(open("/tmp/apk-serve/coupang_creds.json"))
-COUPANG_STORE_ID = str(CREDS["storeId"])
+# creds 가 없으면 쿠팡 기능만 비활성(배민 변환은 그대로 동작).
+try:
+    CREDS = json.load(open(CREDS_PATH))
+except (OSError, ValueError):
+    CREDS = {}
+    sys.stderr.write("WARN: %s 없음 → 쿠팡 비활성, 배민만 동작\n" % CREDS_PATH)
+COUPANG_STORE_ID = str(CREDS.get("storeId", ""))
 # 클라이언트가 스스로 붙이는 정적 쿠키(서버 Set-Cookie 아님)
 STATIC_COOKIES = ("device-id=%s; version=1.10.41; coupang-pos-version=1.10.41; app-type=COUPANG_POS"
                   % CREDS.get("deviceId", ""))
@@ -46,6 +56,8 @@ def _post(url, payload, cookie):
 
 def _login():
     """2단계 로그인 → 전체 쿠키 문자열 생성/저장."""
+    if not CREDS.get("username"):
+        raise RuntimeError("쿠팡 자격증명(coupang_creds.json) 없음")
     jar = {}
     _, c1 = _post("https://pos-api.coupang.com/api/v2/auth/sign-in/user",
                   {"username": CREDS["username"], "password": CREDS["password"], "encrypt": False},
@@ -209,6 +221,9 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/print.apk"):
+            if not os.path.isfile(APK):
+                self._send(404, "text/plain; charset=utf-8", ("APK 없음: %s" % APK).encode("utf-8"))
+                return
             with open(APK, "rb") as f:
                 data = f.read()
             self._send(200, "application/octet-stream", data,
@@ -296,7 +311,11 @@ class H(http.server.BaseHTTPRequestHandler):
         sys.stderr.write("%s %s %s\n" % (self.client_address[0], self.command, self.path))
 
 
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(("0.0.0.0", 8765), H) as httpd:
-    print("serving on 8765", flush=True)
+class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+with ThreadingHTTPServer(("0.0.0.0", PORT), H) as httpd:
+    print("serving on %d (dir=%s)" % (PORT, BASE_DIR), flush=True)
     httpd.serve_forever()

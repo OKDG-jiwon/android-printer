@@ -21,10 +21,10 @@ POS 앱(`android-printer`)과 배달 플랫폼을 잇는 맥/리눅스용 중계
 - `POST /baemin/ack` (`{"id":"bm1"}`) — 출력 완료분 큐에서 제거(중복 방지)
 - `GET  /print.apk` / `GET /up`(업로드 페이지) — APK 사이드로딩
 
-## 실행
+## 실행 (로컬/임시)
 
 ```bash
-# 서버 (8765). coupang_creds.json 이 같은 폴더에 있어야 쿠팡 기능 동작.
+# 서버 (8765). coupang_creds.json 이 같은 폴더에 있어야 쿠팡 기능 동작(없으면 배민만).
 python3 server.py
 
 # 임시 공개 URL (오라클 이전 전까지)
@@ -32,6 +32,31 @@ cloudflared tunnel --url http://localhost:8765
 ```
 
 배포 시 `server.py`, `baemin_reflow.py`, `coupang_creds.json` 세 개를 함께 복사할 것.
+
+### 환경변수(경로·포트)
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `PRINTBRIDGE_DIR` | `/tmp/apk-serve` | APK·uploads·creds 기준 폴더 |
+| `PRINTBRIDGE_PORT` | `8765` | 리슨 포트 |
+| `PRINTBRIDGE_APK` / `PRINTBRIDGE_UPLOADS` / `PRINTBRIDGE_CREDS` | `DIR` 하위 | 개별 경로 override |
+
+## 상시 배포 (오라클 등 리눅스 VM)
+
+`/tmp`·cloudflared 터널은 불안정(초기화·URL 변동). 오라클 Always Free VM에 systemd 로 상시가동:
+
+```bash
+# VM에 레포(server-bridge) 복사 후
+sudo bash server-bridge/deploy/install.sh
+```
+
+- `/opt/printbridge` 에 설치, `printbridge` systemd 서비스로 자동시작·자동재시작.
+- poppler(pdftotext) 자동설치(apt/dnf/yum).
+- **포트 개방**: 오라클 VCN 보안목록 + OS 방화벽(firewalld/iptables)에서 8765/TCP 인바운드 허용.
+- **앱 연결**: 앱 → 프린터 설정 → "서버 주소"에 `http://<VM 공인IP>:8765` 입력(재빌드 불필요).
+  - 앱은 cleartext(http) 허용돼 있어 공인 IP 직접 연결 가능. https 가 필요하면 VM에서 cloudflared named tunnel 또는 caddy 로 감싸면 됨.
+
+> URL 이 바뀌어도 앱 설정에서 주소만 고치면 됨(하드코딩 아님).
 
 ## 배민 자동화
 
