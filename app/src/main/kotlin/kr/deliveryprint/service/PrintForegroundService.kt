@@ -33,8 +33,15 @@ class PrintForegroundService : LifecycleService() {
         if (!workerStarted) {
             workerStarted = true
             lifecycleScope.launch { ServiceLocator.printController.runWorker() }
+            // 클라우드(쿠팡/배민) 신규 주문 자동 폴링·출력 시작.
+            ServiceLocator.cloudPoller.start()
         }
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        ServiceLocator.cloudPoller.stop()
+        super.onDestroy()
     }
 
     private fun startAsForeground() {
@@ -51,7 +58,7 @@ class PrintForegroundService : LifecycleService() {
     private fun buildNotification(): Notification =
         NotificationCompat.Builder(this, DeliveryPrintApp.CHANNEL_SERVICE)
             .setContentTitle("배달 주문 자동 출력")
-            .setContentText("주문 알림을 감지해 자동으로 출력합니다")
+            .setContentText("알림·클라우드(쿠팡/배민) 주문을 감지해 자동 출력합니다")
             .setSmallIcon(R.drawable.ic_print)
             .setOngoing(true)
             .build()

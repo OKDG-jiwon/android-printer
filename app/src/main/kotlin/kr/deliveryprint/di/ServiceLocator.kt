@@ -1,6 +1,7 @@
 package kr.deliveryprint.di
 
 import android.content.Context
+import kr.deliveryprint.data.CloudPoller
 import kr.deliveryprint.data.NotificationRepository
 import kr.deliveryprint.data.SettingsStore
 import kr.deliveryprint.printer.PrintController
@@ -32,4 +33,6 @@ object ServiceLocator {
     val notificationRepository: NotificationRepository by lazy {
         NotificationRepository(settings, printController, appScope)
     }
+
+    val cloudPoller: CloudPoller by lazy { CloudPoller(settings, printController, appScope) }
 }
