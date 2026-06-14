@@ -80,19 +80,37 @@ def between(left, right):
 
 
 def reflow_to_lines(text):
+    """배민 PC는 '고객용 주문전표'만 PDF로 뽑으므로, 매장용 주문서 형태로 표시 변환한다.
+    (데이터는 동일 — 라벨/제목 치환 + 매장용엔 없는 배달주소·결제방식 줄 제거.)
+    """
     out = []
+    in_addr = False
     for raw in text.split('\n'):
+        raw = raw.replace('[고객용]', '[매장용]').replace('주문전표', '주문서')
         s = raw.strip()
+        is_div = bool(s) and set(s) <= set('-─┌┐└┘')  # dashes / box chars
+
+        # 배달주소 블록(매장용엔 없음): '배달주소'부터 다음 구분선까지 통째로 제거.
+        if in_addr:
+            if is_div:
+                in_addr = False
+            continue
+        if s.startswith('배달주소'):
+            in_addr = True
+            continue
+        if s.startswith('결제방식'):   # 매장용엔 없음
+            continue
+
         if not s:
             out.append('')
             continue
-        if set(s) <= set('-─┌┐└┘'):  # dashes / box chars
+        if is_div:
             out.append('-' * W)
             continue
-        if '주문전표' in s or '주문서' in s:   # 가운데 정렬(고객용 주문전표 / 매장용 주문서)
+        if '주문서' in s or '주문전표' in s:   # 제목 가운데 정렬
             out.append(' ' * max(0, (W - dw(s)) // 2) + s)
             continue
-        if re.fullmatch(r'\[\S{1,6}용\]', s):   # [고객용] / [매장용] 우측 정렬
+        if re.fullmatch(r'\[\S{1,6}용\]', s):   # [매장용] 우측 정렬
             out.append(' ' * max(1, W - dw(s)) + s)
             continue
         segs = [x for x in re.split(r'\s{2,}', raw.strip()) if x]
@@ -105,7 +123,14 @@ def reflow_to_lines(text):
             out.extend(between(segs[0], segs[1]))
         else:
             out.extend(between(segs[0], '  '.join(segs[1:])))
-    return out
+
+    # 줄 제거로 생긴 연속 구분선은 1개로 축약.
+    collapsed = []
+    for line in out:
+        if line == '-' * W and collapsed and collapsed[-1] == '-' * W:
+            continue
+        collapsed.append(line)
+    return collapsed
 
 
 def reflow_text(text):
