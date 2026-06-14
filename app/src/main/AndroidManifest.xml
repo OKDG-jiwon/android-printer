@@ -35,18 +35,7 @@
             </intent-filter>
         </activity>
 
-        <!-- 배달앱 주문 알림을 가로채는 핵심 서비스 -->
-        <service
-            android:name=".notification.OrderNotificationListener"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        <!-- 출력 큐를 소비하는 포그라운드 서비스 -->
+        <!-- 출력 큐를 소비하는 포그라운드 서비스 (클라우드 폴링 자동 출력 포함) -->
         <service
             android:name=".service.PrintForegroundService"
             android:exported="false"

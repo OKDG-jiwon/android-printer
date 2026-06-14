@@ -3,10 +3,7 @@ package kr.deliveryprint.ui
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Context
-import android.content.Intent
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,10 +43,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.app.NotificationManagerCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import kr.deliveryprint.core.model.Order
 import kr.deliveryprint.core.model.OrderItem
 import kr.deliveryprint.core.model.OrderType
@@ -61,11 +53,13 @@ import kr.deliveryprint.di.ServiceLocator
 import kr.deliveryprint.service.PrintForegroundService
 import kotlinx.coroutines.launch
 
-private enum class Screen { HOME, PRINTER, LOG, CLOUD, BAEMIN }
+private enum class Screen { HOME, PRINTER, CLOUD, BAEMIN }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 앱이 뜨면 출력 서비스를 바로 가동 → 클라우드(쿠팡/배민) 신규 주문 자동 폴링·출력 시작.
+        PrintForegroundService.start(this)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -81,23 +75,20 @@ class MainActivity : ComponentActivity() {
 private fun AppRoot() {
     var screen by remember { mutableStateOf(Screen.HOME) }
     val title = when (screen) {
-        Screen.HOME -> "배달주문 출력"
+        Screen.HOME -> "배달주문 자동 출력"
         Screen.PRINTER -> "프린터 설정"
-        Screen.LOG -> "알림 로그"
-        Screen.CLOUD -> "클라우드 주문 (쿠팡)"
-        Screen.BAEMIN -> "배민 주문 (PDF)"
+        Screen.CLOUD -> "쿠팡 주문 (수동)"
+        Screen.BAEMIN -> "배민 주문 (수동)"
     }
     Scaffold(topBar = { TopAppBar(title = { Text(title) }) }) { padding ->
         Column(modifier = Modifier.padding(padding)) {
             when (screen) {
                 Screen.HOME -> HomeScreen(
                     onOpenPrinter = { screen = Screen.PRINTER },
-                    onOpenLog = { screen = Screen.LOG },
                     onOpenCloud = { screen = Screen.CLOUD },
                     onOpenBaemin = { screen = Screen.BAEMIN },
                 )
                 Screen.PRINTER -> PrinterSettingsScreen(onBack = { screen = Screen.HOME })
-                Screen.LOG -> NotificationLogScreen(onBack = { screen = Screen.HOME })
                 Screen.CLOUD -> CloudOrdersScreen(onBack = { screen = Screen.HOME })
                 Screen.BAEMIN -> BaeminOrdersScreen(onBack = { screen = Screen.HOME })
             }
@@ -108,13 +99,11 @@ private fun AppRoot() {
 @Composable
 private fun HomeScreen(
     onOpenPrinter: () -> Unit,
-    onOpenLog: () -> Unit,
     onOpenCloud: () -> Unit,
     onOpenBaemin: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberComposableScope()
-    val notiGranted by rememberNotificationAccessGranted()
     val settings by ServiceLocator.settings.settings.collectAsState(initial = null)
     val lastResult by ServiceLocator.printController.lastResult.collectAsState()
 
@@ -125,18 +114,20 @@ private fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        StatusCard(
-            title = "1. 알림 접근 권한",
-            value = if (notiGranted) "허용됨" else "허용 필요",
-            ok = notiGranted,
-        ) {
-            OutlinedButton(onClick = { context.openNotificationAccessSettings() }) {
-                Text("권한 설정 열기")
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("자동 출력 동작 방식", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "쿠팡·배민에 새 주문이 들어오면 중계 서버가 받아두고, 이 앱이 약 20초마다 " +
+                        "가져와 프린터로 자동 출력합니다. 출력 버튼을 누를 필요가 없습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
 
         StatusCard(
-            title = "2. 프린터",
+            title = "1. 프린터",
             value = settings?.let {
                 when (it.printerType) {
                     PrinterType.BLUETOOTH -> it.bluetoothMac?.let { mac -> "블루투스 ($mac)" } ?: "미선택"
@@ -149,8 +140,8 @@ private fun HomeScreen(
         }
 
         StatusCard(
-            title = "3. 자동 출력",
-            value = if (settings?.autoPrint == true) "켜짐" else "꺼짐",
+            title = "2. 자동 출력 (쿠팡·배민)",
+            value = if (settings?.autoPrint == true) "켜짐 — 새 주문 자동 출력" else "꺼짐 — 수동 출력만",
             ok = settings?.autoPrint == true,
         ) {
             Switch(
@@ -171,18 +162,18 @@ private fun HomeScreen(
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { PrintForegroundService.start(context) }, modifier = Modifier.weight(1f)) {
-                Text("서비스 시작")
+                Text("출력 서비스 시작")
             }
             OutlinedButton(onClick = { PrintForegroundService.stop(context) }, modifier = Modifier.weight(1f)) {
-                Text("서비스 중지")
+                Text("중지")
             }
         }
 
-        Button(onClick = onOpenCloud, modifier = Modifier.fillMaxWidth()) { Text("☁ 클라우드 주문 (쿠팡) 불러오기") }
-
-        Button(onClick = onOpenBaemin, modifier = Modifier.fillMaxWidth()) { Text("🛵 배민 주문 (PDF) 불러오기") }
-
-        OutlinedButton(onClick = onOpenLog, modifier = Modifier.fillMaxWidth()) { Text("알림 로그 보기") }
+        Text("수동 조회·재출력", style = MaterialTheme.typography.titleSmall)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onOpenCloud, modifier = Modifier.weight(1f)) { Text("☁ 쿠팡") }
+            OutlinedButton(onClick = onOpenBaemin, modifier = Modifier.weight(1f)) { Text("🛵 배민") }
+        }
 
         lastResult?.let { result ->
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -306,42 +297,6 @@ private fun PrinterSettingsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun NotificationLogScreen(onBack: () -> Unit) {
-    val log by ServiceLocator.notificationRepository.recent.collectAsState()
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            "들어온 알림을 기록합니다. 실제 배달 주문 알림의 패키지명/본문을 확인해 파서를 보정하세요.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Spacer(Modifier.height(8.dp))
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(log) { item ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = (if (item.isOrder) "🧾 주문 · " else "") +
-                                (item.platform?.displayName ?: item.packageName),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Text(item.title, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            item.text,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 6,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("뒤로") }
-    }
-}
-
-@Composable
 private fun CloudOrdersScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberComposableScope()
@@ -437,8 +392,7 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            "배민 PC 클라이언트가 PDF로 저장한 주문전표를 서버가 42칸으로 변환해 보관합니다. " +
-                "출력하면 서버 큐에서 제거됩니다(중복 방지).",
+            "자동 출력이 켜져 있으면 새 배민 주문은 자동으로 출력됩니다. 여기서는 대기 중인 전표를 수동으로 출력할 수 있습니다.",
             style = MaterialTheme.typography.bodySmall,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -455,7 +409,6 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("배민 전표 #${order.orderNumber ?: ""}", style = MaterialTheme.typography.titleSmall)
-                        // 변환 텍스트 미리보기(앞 6줄)
                         order.preformattedText?.lineSequence()?.take(6)?.forEach { line ->
                             Text(line, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -464,7 +417,6 @@ private fun BaeminOrdersScreen(onBack: () -> Unit) {
                             onClick = {
                                 PrintForegroundService.start(context)
                                 ServiceLocator.printController.submit(order)
-                                // 출력 큐에 넣은 뒤 서버에서 제거(중복 방지)
                                 order.orderNumber?.let { id ->
                                     scope.launch {
                                         CloudOrderClient.ackBaemin(id)
@@ -510,35 +462,6 @@ private fun StatusCard(
 
 @Composable
 private fun rememberComposableScope() = androidx.compose.runtime.rememberCoroutineScope()
-
-@Composable
-private fun rememberNotificationAccessGranted(): State<Boolean> {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val state = remember { mutableStateOf(isNotificationAccessGranted(context)) }
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                state.value = isNotificationAccessGranted(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    return state
-}
-
-private fun isNotificationAccessGranted(context: Context): Boolean =
-    NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
-
-private fun Context.openNotificationAccessSettings() {
-    val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
-    } else {
-        "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"
-    }
-    startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-}
 
 @SuppressLint("MissingPermission")
 private fun pairedDevices(context: Context): List<Pair<String, String>> {
